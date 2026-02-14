@@ -1,0 +1,97 @@
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.6;
+    background: #f4f4f4;
+    color: #333;
+}
+
+/* Header */
+header {
+    background: #1e1e2f;
+    color: white;
+    padding: 1.5rem 2rem;
+}
+
+header h1 {
+    margin-bottom: 0.5rem;
+}
+
+nav a {
+    color: #ddd;
+    margin-right: 1.2rem;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+nav a:hover {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
+/* Main Content */
+main {
+    max-width: 900px;
+    margin: 3rem auto;
+    padding: 0 2rem;
+}
+
+section {
+    margin-bottom: 3rem;
+}
+
+h2 {
+    margin-bottom: 1rem;
+    color: #222;
+}
+
+/* Bio Section */
+.bio p {
+    font-size: 1.1rem;
+}
+
+/* Blog */
+.blog-list article {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #ddd;
+}
+
+.blog-list h2 a {
+    text-decoration: none;
+    color: #1e1e2f;
+}
+
+.blog-list h2 a:hover {
+    text-decoration: underline;
+}
+
+.date {
+    font-size: 0.9rem;
+    color: #777;
+    margin-bottom: 0.5rem;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 2rem;
+    background: #1e1e2f;
+    color: white;
+    margin-top: 3rem;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    nav a {
+        display: block;
+        margin: 0.5rem 0;
+    }
+}
