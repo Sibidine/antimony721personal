@@ -95,3 +95,58 @@ footer {
         margin: 0.5rem 0;
     }
 }
+
+/* Snaps Section */
+.snaps {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.snap-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.8rem; /* reduced spacing */
+}
+
+.snap-item {
+    text-align: center;
+}
+
+.snap-item img {
+    width: 100%;
+    height: 300px; /* larger image */
+    object-fit: cover;
+    border-radius: 6px;
+    transition: transform 0.3s ease;
+}
+
+.snap-item img:hover {
+    transform: scale(1.02);
+}
+
+.caption {
+    margin-top: 0.4rem;
+    font-size: 0.8rem; /* smaller subtitle */
+    color: #666;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .snap-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .snap-item img {
+        height: 260px;
+    }
+}
+
+@media (max-width: 600px) {
+    .snap-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .snap-item img {
+        height: 240px;
+    }
+}
