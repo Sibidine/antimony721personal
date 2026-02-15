@@ -159,7 +159,7 @@ main {
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    gap: 140px;
+    gap: 80px;
     max-width: 3000px;
     margin: 0 auto;
 }
