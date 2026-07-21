@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Gaussian Splatting</title>
+    <link rel="stylesheet" href="../styles.css">
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .markdown-body {
+            line-height: 1.6;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+        }
+        .markdown-body p, .markdown-body ul, .markdown-body ol {
+            margin-bottom: 1em;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Gaussian Splatting</h1>
+    <nav>
+        <a href="../index.html">Home</a>
+        <a href="../techblog.html">Technical Blog</a>
+    </nav>
+</header>
+
+<main>
+    <div class="markdown-body">
+<h3 id="d-gaussian-splatting1">3D gaussian splatting<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></h3>
+<p>This is a method of novel view synthesis, where, from photos or videos captured of a scene, novel views from unseen angles can be constructed of that scene.</p>
+<p>The input to this method is a set of images of a static scene. From these images, corresponding cameras are calibrated using SfM<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a>. This calibration of cameras also produces a sparse-point cloud as a side effect.</p>
+<h4 id="creation-of-the-sparse-point-cloud">Creation of the Sparse Point Cloud</h4>
+<p>Distinct 2D points of interest are identified in every individual image. The system compares these features across the entire image collection to establish matching correspondences, which identify where different images observe the exact same exact scene points.</p>
+<p>After establishing the above, we come to reconstruction. Two initial, overlapping images are selected, and the relative distance and orientation between their camera views are estimated. By analysing the matched 2D features between the two cameras, it calculates the 3D position of those specific points (this being an inital fragment of the sparse 3D point cloud).</p>
+<p>For the calibration of the next camera, a mathematical process called <em>Perspective-n-Point</em> (PnP) is followed: it looks at the 2D features in the new image and identifies which ones correspond to the already existing 3D points in the initial point cloud (this is known as <em>2D-3D correspondence</em>). By aligning the camera such that these 3D points correctly project onto their observed 2D pixels, the camera’s precise pose is mathematically locked into place.</p>
+<p>Once this new camera’s position is successfully calibrated, the system uses it to discover new structure. The newly registered camera will comtain 2D feature matches corresponding to other registered images that habe not yet been mapped into 3D space. Rays are projected from the new and old cameras through these matched 2D pixels, and the exact point where they intersect in 3D space is found.</p>
+<p>This geometric instersection calculation, called triangulation, creates brand new 3D coordinates and adds them to the existing structure, progressively expanding the size of the sparse point cloud.</p>
+<h4 id="defining-the-3d-gaussians">Defining the 3D Gaussians</h4>
+<p>Coming to the 3D Gaussians, they are defined by a full 3D covariance matrix <span class="math inline">\(\Sigma\)</span> defined in world space, centred at point (mean) <span class="math inline">\(\mu\)</span>: <span class="math display">\[G(x) = e^{-\frac{1}{2}(x)^T\Sigma^{-1}(x)}\]</span></p>
+<p>, which is then multiplied by <span class="math inline">\(\alpha\)</span> (opacity) in the blending process. To project these 3D gaussians into 2D, given a viewing transformation W, the covariance matrix <span class="math inline">\(\Sigma&#39;\)</span> in camera coordinates is given as: <span class="math display">\[\Sigma&#39; = JW\Sigma W^TJ^T\]</span> where J is the Jacobian of the affine approximation of the projective transformation. The covariance matrix, for purposes of keeping it positive semi-definite through gradient descnet, is paramtereized by the scaling matrix S and rotation matrix R in the following manner: <span class="math display">\[\Sigma = RSS^TR^T\]</span> , with a 3D vector s for scaling and a quaternion q for rotation being stored separately, such that they may be converted to their respective matrices and combined trivially.</p>
+<h4 id="optimization">Optimization</h4>
+<p>Stochastic Gradient Descent is used for optimization, since it allows us to create, destroy to move geometry. A sigmoid activation is used to constrain opacity, and an exponential activation function for the scale of the covariance.</p>
+<p>The loss function is <span class="math inline">\(\mathcal{L}_1\)</span> combined with a /d-SSIM term: <span class="math display">\[\mathcal{L} = (1-\lambda)\mathcal{L}+\lambda\mathcal{L}_{D-SSIM}\]</span> with <span class="math inline">\(\lambda\)</span> = 0.2.</p>
+<h4 id="adaptive-control">Adaptive Control</h4>
+<p>This focuses on areas with large view-space positional gradients- which may be missing geometric features (under-reconstruction) and regions where Gaussians cover large areas (over-reconstruction).In the case of small Gaussians in under-resconstructed areas, the Gaussians are cloned, and for large Gaussians with with high variance, spltting is done: they are replaced by two new Gaussians, and their scale is divided by a factor of <span class="math inline">\(\phi = 0.6\)</span>.</p>
+<p>To avoid getting too many Gaussians, the opacity <span class="math inline">\(\alpha\)</span> is set close to zero every N = 3000 iterations, and Gaussians with <span class="math inline">\(\alpha &lt; \epsilon_{\alpha}\)</span> are culled.</p>
+<h4 id="fast-differentiable-rasterizer">Fast Differentiable Rasterizer</h4>
+<p>This rasterization is treated as a continuous mathematical function rather than a set of hard pixel assignments. This is achieved through differentiable alpha blending- the rendered looks at the splats in order of front to back, accumulating colours based on opacities.</p>
+<p>3DGS uses a rasterizer having the following steps: 1. the system identified and discards any Gaussians that are completely outside the camera’s view. 2. It divides the screen into a grid of small tiles, 16 <span class="math inline">\(\times\)</span> 16 in this case. 3. Which Gaussians land in which tiles is calculated. In case a gaussian overlaps over multiple tiles, it is virtually duplicated and assigned a key for each tile. 4. A radix sort is done to organise the Gaussians on each tile according to their depth, and thus pixel-wsie sorting is avoided 5. Front to back colour and opacity blending is done.</p>
+<h2 id="ivr-gs">iVR-GS</h2>
+<p>This extends 3D-GS to volume visualization, and improves reconstruction quality and composability.<a href="#fn3" class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a></p>
+<h4 id="viewpoint-sampling">Viewpoint Sampling</h4>
+<p>To generate multi-view images required for training, designing a set of basic transfer functions to extract meaningful objects from the VolVis scene training is necessary. Icosphere samplng is used 12 multi-view images for each basic transfer function as initial sample images. The complexity of the basic scene is evaluated to determine the number of viewpoints for training. This complexity is calculated through a combination of colour and opacity entropies over initial sample images, and is given by</p>
+<p><span class="math display">\[E = -\Sigma_{i = 1}^{N_p}(p_i^c\ log\ p_i^c + p_i^\alpha\ log\ p_i^\alpha)\]</span></p>
+<p>Where N<sub>p</sub> is the total number of pixels for all initial sample images, <span class="math inline">\(p_i^c\)</span> and <span class="math inline">\(p_i^\alpha\)</span> represent the i-th pixel’s colour and alpha value probabilities respectively. This score is normalized by dividing it by the max entropy score among all basic scenes. Varying number of additional views are sampled uniformly beyond this if necessary.</p>
+<h4 id="base-3dgs-optimisation">Base 3DGS Optimisation</h4>
+<p>The version of 3DGS used here has an extra normal attribute <strong>n</strong> incorporated for each Gaussian, and is optimized<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a> as:</p>
+<p><span class="math display">\[\{D,N\} = \Sigma_{i \in N}T_i\alpha_i\{d_i, n_i\}\]</span> where D and N denote the rendered depth and normal maps of the base 3DGS represented scene, <span class="math inline">\(d_i\)</span> and <span class="math inline">\(n_i\)</span> are the depth and normal of the i-th sampled Gaussian. After this, a pseudo normal <span class="math inline">\(\widetilde{N}\)</span> from D is calculated under the local planarity assumption, and the normal consistency loss is: <span class="math display">\[\mathcal{L} = ||N - \widetilde{N} ||_2 \]</span> A collection of SH coefficients are also used to resore the colour information of each Gaussian. Optimizing <strong>n</strong> is to provide an initialzation that can accelerate the converge of editable Gaussian optimization. The above loss is used alongside the standard L-1 and SSIM losses for base 3DGS output colour and alpha channels.</p>
+<p>After optimization, the i-th Gaussian is parameterized by <span class="math inline">\(\{\mu_i, q_i, s_i, o_i, n_i, c_i\}\)</span>, where the view dependent colour c_i is represented by SH coefficients.</p>
+<blockquote>
+<p>[!Note] The final size of iVR-GS outputs is smaller than that of 3dGS even though the spherical harmonics of the latter seem to be present in the former. This is because iVR-GS uses Blinn-Phong reflection for colour, and the spherical harmonics (SH) coefficients are not present in the final model when saved in phong mode.</p>
+</blockquote>
+<h4 id="editable-gaussian-optimisation">Editable Gaussian Optimisation</h4>
+<p>The Blinn-Phong reflection model is used to compute the view-dependent colour of each Gaussian instead of using SH coefficients. Additional shading attributes are assigned to each Gaussian- an offset colour <span class="math inline">\(\Delta c \in \mathbb{R}^3\)</span>, ambient, diffuse and specular coefficients <span class="math inline">\(k^a, k^d, k^s\)</span> and a shininess term <span class="math inline">\(\beta\)</span>. Additional regularizations to optimise the opacity term and shading attributes are also used- low opacity Gaussians are periodically removed and opacity of Gaussians is kept at a minimum using L1 regularization. Sparsity regularizatio is also added to avoid <span class="math inline">\(\Delta c\)</span> causing significant palette colour shiftings, which is defined as the L1 loss of the rendered offset colour map. Bilateral smoothness regularization is employed for the Phong coefficients and shading attributes.</p>
+<p>After this step, the i-th Gaussian is parameterized by <span class="math inline">\(\{\mu_i, q_i, s_i, o_i, n_i\}\)</span>, along with shading attributes <span class="math inline">\(\{\Delta c_i, k^a_i, k^d_i, k^b_i, \beta_i\}\)</span>.</p>
+<h4 id="compression-via-vector-quantization">Compression Via Vector Quantization</h4>
+<p>k-means Clustering is used to generae a shared codebook for one attribute value across all Gaussians. Instead of storgin the exact value of an attribute, each primitive stores an index to the nearest value within the fixed size codebook. Such codebooks are generaed for all editable Gaussian attributes except <span class="math inline">\(\mu\)</span> and <strong>n</strong> since quantizing these lowers reconstruction quality.</p>
+<h4 id="inverse-volume-exploration">Inverse Volume Exploration</h4>
+<p>Given a reference point and corresponding camera pose, the parameters of all editable Gaussian attributes ae frozen, and transformation parameters for colour, opacity and lighting for each basic iVR-GS model is learnt.</p>
+<hr />
+<section class="footnotes" role="doc-endnotes">
+<hr />
+<ol>
+<li id="fn1" role="doc-endnote"><p>Kerbl, Bernhard, et al. “3d gaussian splatting for real-time radiance field rendering.” <em>ACM Trans. Graph.</em> 42.4 (2023): 139-1.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2" role="doc-endnote"><p>Schonberger, Johannes L., and Jan-Michael Frahm. “Structure-from-motion revisited.” <em>Proceedings of the IEEE conference on computer vision and pattern recognition</em>. 2016.<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3" role="doc-endnote"><p>Tang et al. - iVR-GS: Inverse Volume Rendering for Explorable Visualization via Editable 3D Gaussian Splatting<a href="#fnref3" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn4" role="doc-endnote"><p>J. Gao, C. Gu, Y. Lin, H. Zhu, X. Cao, L. Zhang, and Y. Yao. Relightable 3D Gaussian: Real-time point cloud relighting with BRDF decomposition and ray tracing. arXiv preprint arXiv:2311.16043, 2023. doi: 10.48550/ arXiv.2311.16043 2, 4, 7<a href="#fnref4" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section>
+
+    </div>
+</main>
+
+<footer>
+    <p>© 2026 Banerjee</p>
+</footer>
+
+</body>
+</html>
